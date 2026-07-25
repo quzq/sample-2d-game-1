@@ -42,6 +42,67 @@ function readInput() {
   }
 }
 
+function createSvgImage(svg) {
+  const image = new Image()
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+  return image
+}
+
+// These tiny SVG sprites are embedded on purpose.
+// The sample remains a plain Web Canvas game with no asset pipeline.
+// Later, the mobile wrapper can still treat it like a normal Canvas game.
+const penguinRunImage = createSvgImage(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 20">
+  <rect width="16" height="20" fill="none"/>
+  <ellipse cx="8" cy="10" rx="6" ry="8" fill="#202838"/>
+  <ellipse cx="8" cy="11" rx="4" ry="6" fill="#f4f1df"/>
+  <circle cx="6" cy="6" r="1" fill="#f5f5f5"/>
+  <circle cx="10" cy="6" r="1" fill="#f5f5f5"/>
+  <rect x="7" y="7" width="2" height="1" fill="#f59f28"/>
+  <path d="M2 11 L0 15 L4 14 Z" fill="#202838"/>
+  <path d="M14 11 L16 15 L12 14 Z" fill="#202838"/>
+  <rect x="4" y="18" width="3" height="1" fill="#f59f28"/>
+  <rect x="9" y="18" width="3" height="1" fill="#f59f28"/>
+</svg>`)
+
+const penguinJumpImage = createSvgImage(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 20">
+  <rect width="16" height="20" fill="none"/>
+  <ellipse cx="8" cy="10" rx="6" ry="8" fill="#202838"/>
+  <ellipse cx="8" cy="11" rx="4" ry="6" fill="#fff5d6"/>
+  <circle cx="6" cy="6" r="1" fill="#f5f5f5"/>
+  <circle cx="10" cy="6" r="1" fill="#f5f5f5"/>
+  <rect x="7" y="7" width="2" height="1" fill="#ffb13b"/>
+  <path d="M3 10 L0 7 L2 14 Z" fill="#202838"/>
+  <path d="M13 10 L16 7 L14 14 Z" fill="#202838"/>
+  <rect x="3" y="17" width="4" height="1" fill="#ffb13b"/>
+  <rect x="9" y="17" width="4" height="1" fill="#ffb13b"/>
+</svg>`)
+
+const penguinFallImage = createSvgImage(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 20">
+  <rect width="16" height="20" fill="none"/>
+  <ellipse cx="8" cy="10" rx="6" ry="8" fill="#202838"/>
+  <ellipse cx="8" cy="11" rx="4" ry="6" fill="#f4f1df"/>
+  <circle cx="6" cy="6" r="1" fill="#f5f5f5"/>
+  <circle cx="10" cy="6" r="1" fill="#f5f5f5"/>
+  <rect x="7" y="7" width="2" height="1" fill="#f59f28"/>
+  <path d="M2 12 L0 16 L5 15 Z" fill="#202838"/>
+  <path d="M14 12 L16 16 L11 15 Z" fill="#202838"/>
+  <rect x="4" y="18" width="3" height="1" fill="#f59f28"/>
+  <rect x="9" y="18" width="3" height="1" fill="#f59f28"/>
+</svg>`)
+
+const rockImage = createSvgImage(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect width="24" height="24" fill="none"/>
+  <path d="M3 20 L2 13 L7 5 L15 3 L22 10 L21 20 Z" fill="#7b7f87"/>
+  <path d="M7 5 L11 10 L2 13 Z" fill="#a5a9b0"/>
+  <path d="M15 3 L22 10 L13 9 Z" fill="#8f949c"/>
+  <path d="M7 20 L13 9 L21 20 Z" fill="#5f646b"/>
+  <path d="M3 20 L7 13 L11 20 Z" fill="#6d7279"/>
+</svg>`)
+
 const player = {
   x: 34,
   y: 178,
@@ -230,6 +291,35 @@ function drawPixelText(text, x, y, align = 'left') {
   ctx.fillText(text, x, y)
 }
 
+function getPlayerImage() {
+  if (player.grounded) return penguinRunImage
+  if (player.vy < 0) return penguinJumpImage
+  return penguinFallImage
+}
+
+function drawPlayer() {
+  const image = getPlayerImage()
+
+  if (image.complete) {
+    ctx.drawImage(image, player.x - 3, player.y - 5, 16, 20)
+    return
+  }
+
+  // Fallback for the first frame before the embedded SVG finishes decoding.
+  ctx.fillStyle = '#202838'
+  ctx.fillRect(player.x, player.y, player.w, player.h)
+}
+
+function drawRock(block) {
+  if (rockImage.complete) {
+    ctx.drawImage(rockImage, block.x - 2, block.y - 2, block.w + 4, block.h + 4)
+    return
+  }
+
+  ctx.fillStyle = '#7b7f87'
+  ctx.fillRect(block.x, block.y, block.w, block.h)
+}
+
 function render() {
   ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT)
 
@@ -259,18 +349,11 @@ function render() {
   ctx.globalAlpha = 1
 
   // Player.
-  ctx.fillStyle = player.grounded ? '#f6d365' : '#fda085'
-  ctx.fillRect(player.x, player.y, player.w, player.h)
-  ctx.fillStyle = '#241915'
-  ctx.fillRect(player.x + 6, player.y + 4, 2, 2)
+  drawPlayer()
 
   // Obstacles.
-  ctx.fillStyle = '#d84a4a'
   for (const block of world.blocks) {
-    ctx.fillRect(block.x, block.y, block.w, block.h)
-    ctx.fillStyle = '#9c2626'
-    ctx.fillRect(block.x, block.y, block.w, 3)
-    ctx.fillStyle = '#d84a4a'
+    drawRock(block)
   }
 
   // Coins.
