@@ -8,6 +8,7 @@
 
 const LOGICAL_WIDTH = 256
 const LOGICAL_HEIGHT = 240
+const GROUND_Y = 192
 
 const canvas = document.getElementById('game')
 const ctx = canvas.getContext('2d')
@@ -18,6 +19,23 @@ canvas.width = LOGICAL_WIDTH
 canvas.height = LOGICAL_HEIGHT
 
 const keys = new Set()
+const pressed = {
+  jump: false,
+  pause: false,
+  restart: false,
+}
+
+function isJumpKey(code) {
+  return code === 'Space' || code === 'KeyZ'
+}
+
+function isPauseKey(code) {
+  return code === 'KeyP'
+}
+
+function isRestartKey(code) {
+  return code === 'KeyR'
+}
 
 window.addEventListener('keydown', (event) => {
   keys.add(event.code)
@@ -26,6 +44,12 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'Space') {
     event.preventDefault()
   }
+
+  // Latch short key presses until the next update frame.
+  // Without this, a quick second tap can happen between frames and vanish.
+  if (!event.repeat && isJumpKey(event.code)) pressed.jump = true
+  if (!event.repeat && isPauseKey(event.code)) pressed.pause = true
+  if (!event.repeat && isRestartKey(event.code)) pressed.restart = true
 })
 
 window.addEventListener('keyup', (event) => {
@@ -33,13 +57,20 @@ window.addEventListener('keyup', (event) => {
 })
 
 function readInput() {
-  return {
+  const input = {
     left: keys.has('ArrowLeft') || keys.has('KeyA'),
     right: keys.has('ArrowRight') || keys.has('KeyD'),
-    jump: keys.has('Space') || keys.has('KeyZ'),
-    restart: keys.has('KeyR'),
-    pause: keys.has('KeyP'),
+    jumpHeld: keys.has('Space') || keys.has('KeyZ'),
+    jumpPressed: pressed.jump,
+    restartPressed: pressed.restart,
+    pausePressed: pressed.pause,
   }
+
+  pressed.jump = false
+  pressed.restart = false
+  pressed.pause = false
+
+  return input
 }
 
 function createSvgImage(svg) {
@@ -111,7 +142,6 @@ const player = {
   vx: 0,
   vy: 0,
   grounded: false,
-  jumpWasDown: false,
   jumpsRemaining: 2,
 }
 
@@ -124,7 +154,6 @@ const world = {
   coinTimer: 1.2,
   gameOver: false,
   paused: false,
-  pauseWasDown: false,
   blocks: [],
   coins: [],
   dust: [],
@@ -136,7 +165,6 @@ function resetGame() {
   player.vx = 0
   player.vy = 0
   player.grounded = false
-  player.jumpWasDown = false
   player.jumpsRemaining = 2
 
   world.time = 0
@@ -146,7 +174,6 @@ function resetGame() {
   world.coinTimer = 1.2
   world.gameOver = false
   world.paused = false
-  world.pauseWasDown = false
   world.blocks = []
   world.coins = []
   world.dust = []
@@ -167,7 +194,7 @@ function spawnBlock() {
 
   world.blocks.push({
     x: LOGICAL_WIDTH + 8,
-    y: 192 - height,
+    y: GROUND_Y - height,
     w: width,
     h: height,
   })
@@ -197,56 +224,46 @@ function jump(strength) {
 function update(dt) {
   const input = readInput()
 
-  if (input.pause && !world.pauseWasDown && !world.gameOver) {
+  if (input.pausePressed && !world.gameOver) {
     world.paused = !world.paused
   }
-  world.pauseWasDown = input.pause
 
   if (world.gameOver) {
-    if (input.restart) {
-      resetGame()
-    }
+    if (input.restartPressed) resetGame()
     return
   }
 
-  if (world.paused) {
-    return
-  }
+  if (world.paused) return
 
   world.time += dt
   world.score += dt * 10
   world.speed = 54 + world.time * 2.4
 
-  // Horizontal movement is deliberately simple.
-  // This makes the sample easy to move into a later InputState wrapper.
   const moveSpeed = 86
   player.vx = 0
-
   if (input.left) player.vx -= moveSpeed
   if (input.right) player.vx += moveSpeed
 
-  const jumpDown = input.jump
-  const justPressedJump = jumpDown && !player.jumpWasDown
-
-  if (justPressedJump && player.jumpsRemaining > 0) {
+  // Double jump:
+  // - First tap uses one jump from the ground.
+  // - Second tap is latched by keydown, so quick double-taps do not disappear between frames.
+  if (input.jumpPressed && player.jumpsRemaining > 0) {
     jump(player.grounded ? 154 : 132)
   }
 
-  player.jumpWasDown = jumpDown
-
-  // Gravity and ground collision.
   player.vy += 420 * dt
   player.x += player.vx * dt
   player.y += player.vy * dt
 
   player.x = Math.max(8, Math.min(LOGICAL_WIDTH - player.w - 8, player.x))
 
-  const groundY = 192
-  if (player.y + player.h >= groundY) {
-    player.y = groundY - player.h
+  if (player.y + player.h >= GROUND_Y) {
+    player.y = GROUND_Y - player.h
     player.vy = 0
     player.grounded = true
     player.jumpsRemaining = 2
+  } else {
+    player.grounded = false
   }
 
   world.spawnTimer -= dt
@@ -270,7 +287,6 @@ function update(dt) {
       localStorage.setItem('sample-2d-game-1.bestScore', String(world.bestScore))
     }
   }
-
   world.blocks = world.blocks.filter((block) => block.x + block.w > -8)
 
   for (const coin of world.coins) {
@@ -281,7 +297,6 @@ function update(dt) {
       world.score += 100
     }
   }
-
   world.coins = world.coins.filter((coin) => !coin.taken && coin.x + coin.w > -8)
 
   for (const dust of world.dust) {
@@ -313,7 +328,6 @@ function drawPlayer() {
     return
   }
 
-  // Fallback for the first frame before the embedded SVG finishes decoding.
   ctx.fillStyle = '#202838'
   ctx.fillRect(player.x, player.y, player.w, player.h)
 }
@@ -331,24 +345,20 @@ function drawRock(block) {
 function render() {
   ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT)
 
-  // Sky.
   ctx.fillStyle = '#111a33'
   ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT)
 
-  // Far simple background.
   ctx.fillStyle = '#1d2a4d'
   for (let i = 0; i < 8; i += 1) {
     const x = (i * 44 - (world.time * 10) % 44) | 0
     ctx.fillRect(x, 148, 28, 44)
   }
 
-  // Ground.
   ctx.fillStyle = '#4c3a24'
-  ctx.fillRect(0, 192, LOGICAL_WIDTH, 48)
+  ctx.fillRect(0, GROUND_Y, LOGICAL_WIDTH, LOGICAL_HEIGHT - GROUND_Y)
   ctx.fillStyle = '#7a5c35'
-  ctx.fillRect(0, 192, LOGICAL_WIDTH, 4)
+  ctx.fillRect(0, GROUND_Y, LOGICAL_WIDTH, 4)
 
-  // Dust.
   ctx.fillStyle = '#c9b07a'
   for (const dust of world.dust) {
     ctx.globalAlpha = Math.max(0, dust.life / 0.25)
@@ -356,22 +366,18 @@ function render() {
   }
   ctx.globalAlpha = 1
 
-  // Player.
   drawPlayer()
 
-  // Obstacles.
   for (const block of world.blocks) {
     drawRock(block)
   }
 
-  // Coins.
   ctx.fillStyle = '#ffd54a'
   for (const coin of world.coins) {
     ctx.fillRect(coin.x + 1, coin.y, 4, 6)
     ctx.fillRect(coin.x, coin.y + 1, 6, 4)
   }
 
-  // HUD.
   ctx.fillStyle = '#f5f5f5'
   drawPixelText(`SCORE ${Math.floor(world.score)}`, 8, 8)
   drawPixelText(`BEST ${world.bestScore}`, LOGICAL_WIDTH - 8, 8, 'right')
