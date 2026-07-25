@@ -112,6 +112,7 @@ const player = {
   vy: 0,
   grounded: false,
   jumpWasDown: false,
+  jumpsRemaining: 2,
 }
 
 const world = {
@@ -136,6 +137,7 @@ function resetGame() {
   player.vy = 0
   player.grounded = false
   player.jumpWasDown = false
+  player.jumpsRemaining = 2
 
   world.time = 0
   world.score = 0
@@ -185,6 +187,13 @@ function addDust(x, y) {
   world.dust.push({ x, y, life: 0.25 })
 }
 
+function jump(strength) {
+  player.vy = -strength
+  player.grounded = false
+  player.jumpsRemaining -= 1
+  addDust(player.x + player.w / 2, player.y + player.h)
+}
+
 function update(dt) {
   const input = readInput()
 
@@ -219,10 +228,8 @@ function update(dt) {
   const jumpDown = input.jump
   const justPressedJump = jumpDown && !player.jumpWasDown
 
-  if (justPressedJump && player.grounded) {
-    player.vy = -154
-    player.grounded = false
-    addDust(player.x + player.w / 2, player.y + player.h)
+  if (justPressedJump && player.jumpsRemaining > 0) {
+    jump(player.grounded ? 154 : 132)
   }
 
   player.jumpWasDown = jumpDown
@@ -239,6 +246,7 @@ function update(dt) {
     player.y = groundY - player.h
     player.vy = 0
     player.grounded = true
+    player.jumpsRemaining = 2
   }
 
   world.spawnTimer -= dt
@@ -367,6 +375,7 @@ function render() {
   ctx.fillStyle = '#f5f5f5'
   drawPixelText(`SCORE ${Math.floor(world.score)}`, 8, 8)
   drawPixelText(`BEST ${world.bestScore}`, LOGICAL_WIDTH - 8, 8, 'right')
+  drawPixelText(`JUMP ${player.jumpsRemaining}`, 8, 20)
 
   if (world.paused) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
